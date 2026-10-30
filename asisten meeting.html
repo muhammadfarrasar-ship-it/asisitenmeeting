@@ -1,0 +1,1647 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MeetingAI — AI Notetaker</title>
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50:'#F0F7FF', 100:'#E0F0FE', 200:'#BAE6FD', 300:'#7DD3FC',
+                            400:'#38BDF8', 500:'#0EA5E9', 600:'#0284C7', 700:'#0369A1',
+                            800:'#075985', 900:'#0C4A6E'
+                        }
+                    },
+                    fontFamily: {
+                        heading: ['Nunito','system-ui','sans-serif'],
+                        body: ['Inter','system-ui','sans-serif']
+                    }
+                }
+            }
+        }
+    </script>
+    <script src="https://unpkg.com/@phosphor-icons/web"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+
+    <style>
+        body { font-family: 'Inter', system-ui, sans-serif; scroll-behavior: smooth; }
+
+        .line-clamp-3 {
+            display: -webkit-box;
+            -webkit-line-clamp: 3;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+        }
+
+        /* Animasi Tombol Rekam */
+        @keyframes rec-pulse {
+            0%,100% { box-shadow: 0 0 0 0 rgba(14,165,233,0.5); }
+            50%     { box-shadow: 0 0 0 12px rgba(14,165,233,0); }
+        }
+        .recording-pulse { animation: rec-pulse 1.5s ease-out infinite; }
+
+        /* Animasi Maskot Miyu Melayang */
+        @keyframes miyu-float {
+            0%, 100% { transform: translateY(0px) rotate(0deg); }
+            50% { transform: translateY(-8px) rotate(1deg); }
+        }
+        .miyu-floating {
+            animation: miyu-float 4s ease-in-out infinite;
+        }
+
+        /* Animasi Blink Mata Miyu */
+        @keyframes miyu-blink {
+            0%, 90%, 100% { transform: scaleY(1); }
+            95% { transform: scaleY(0.1); }
+        }
+        .miyu-eye {
+            transform-origin: center;
+            animation: miyu-blink 4s infinite;
+        }
+
+        /* Animasi Gelombang Suara */
+        .sound-wave {
+            display: flex;
+            align-items: center;
+            gap: 3px;
+            height: 16px;
+        }
+        .sound-wave span {
+            display: block;
+            width: 3px;
+            height: 100%;
+            background-color: #ef4444;
+            border-radius: 3px;
+            animation: wave 1.2s cubic-bezier(0.85, 0, 0.15, 1) infinite;
+        }
+        .sound-wave span:nth-child(2) { animation-delay: 0.15s; }
+        .sound-wave span:nth-child(3) { animation-delay: 0.3s; }
+        .sound-wave span:nth-child(4) { animation-delay: 0.45s; }
+        .sound-wave span:nth-child(5) { animation-delay: 0.6s; }
+        
+        @keyframes wave {
+            0%, 100% { height: 4px; }
+            50% { height: 16px; }
+        }
+
+        /* Custom Scrollbar */
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 5px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 4px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+            background: #94a3b8;
+        }
+
+        /* Sidebar Minimized State */
+        .sidebar-minimized { width: 5rem !important; }
+        .sidebar-minimized .menu-label, .sidebar-minimized .brand-text { display: none; }
+        .sidebar-minimized .sidebar-btn-container { justify-content: center; padding-left: 0; padding-right: 0; }
+        .sidebar-minimized .sidebar-icon { margin-right: 0; }
+        .sidebar-minimized .sidebar-header { justify-content: center; padding: 0; }
+    </style>
+</head>
+
+<body class="bg-slate-50 text-slate-800 min-h-screen">
+
+<!-- ============================================================
+     MOBILE SIDEBAR BACKDROP
+     ============================================================ -->
+<div id="sidebar-backdrop"
+     onclick="toggleSidebar(false)"
+     class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-[54] md:hidden
+            opacity-0 pointer-events-none transition-opacity duration-300"></div>
+
+<!-- ============================================================
+     LAYOUT
+     ============================================================ -->
+<div class="flex h-screen overflow-hidden">
+
+    <!-- SIDEBAR -->
+    <aside id="sidebar"
+           class="fixed md:relative inset-y-0 left-0 z-[55] w-64 bg-white
+                  border-r border-slate-200 flex flex-col shrink-0 h-screen
+                  -translate-x-full md:translate-x-0
+                  transition-all duration-300 ease-in-out">
+
+        <div class="sidebar-header h-16 flex items-center justify-between px-6 border-b border-slate-100 shrink-0 overflow-hidden">
+            <div class="flex items-center gap-2">
+                <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-brand-500 to-brand-600 flex items-center justify-center text-white shadow-sm shrink-0">
+                    <i class="ph-fill ph-microphone-stage text-lg"></i>
+                </div>
+                <div class="brand-text">
+                    <h1 class="font-bold text-slate-800 leading-tight">MeetingAI</h1>
+                    <p class="text-[10px] text-brand-600 font-semibold">Workspace Edition</p>
+                </div>
+            </div>
+            <button onclick="toggleSidebar(false)"
+                    class="md:hidden p-2 rounded-lg hover:bg-slate-100 text-slate-600 shrink-0"
+                    aria-label="Tutup menu">
+                <i class="ph ph-x text-lg"></i>
+            </button>
+        </div>
+
+        <!-- Area Navigasi dengan Independent Custom Scrollbar -->
+        <nav class="flex-1 p-4 flex flex-col gap-1 overflow-y-auto overflow-x-hidden custom-scrollbar">
+            <a href="#" onclick="toggleSidebar(false); return false;"
+               class="sidebar-btn-container flex items-center px-3 py-2.5 bg-brand-50 text-brand-700 rounded-lg font-medium transition-colors">
+                <i class="ph ph-microphone-stage text-lg mr-3 sidebar-icon shrink-0"></i> <span class="menu-label whitespace-nowrap">Rapat Saat Ini</span>
+            </a>
+            <a href="#" onclick="openArchiveModal(); return false;"
+               class="sidebar-btn-container flex items-center px-3 py-2.5 text-slate-600 hover:bg-slate-50 rounded-lg transition-colors">
+                <i class="ph ph-folders text-lg mr-3 sidebar-icon shrink-0"></i> <span class="menu-label whitespace-nowrap">Arsip Rapat</span>
+            </a>
+            <a href="#" onclick="openAnalyticsModal(); return false;"
+               class="sidebar-btn-container flex items-center px-3 py-2.5 text-slate-600 hover:bg-slate-50 rounded-lg transition-colors">
+                <i class="ph ph-chart-bar text-lg mr-3 sidebar-icon shrink-0"></i> <span class="menu-label whitespace-nowrap">Analitik</span>
+            </a>
+            <a href="#" onclick="openSettingsModal(); return false;"
+               class="sidebar-btn-container flex items-center px-3 py-2.5 text-slate-600 hover:bg-slate-50 rounded-lg transition-colors">
+                <i class="ph ph-gear text-lg mr-3 sidebar-icon shrink-0"></i> <span class="menu-label whitespace-nowrap">Pengaturan</span>
+            </a>
+        </nav>
+
+        <!-- Fixed Footer Controls -->
+        <div class="p-4 border-t border-slate-100 hidden md:flex flex-col gap-2 shrink-0">
+            <!-- User Profile / Login Card -->
+            <button onclick="openLoginModal()" 
+                    class="w-full flex items-center justify-between p-2 rounded-xl bg-slate-50 border border-slate-200 hover:bg-slate-100 transition-colors text-left group">
+                <div class="flex items-center gap-2 overflow-hidden">
+                    <div id="user-avatar" class="w-8 h-8 rounded-full bg-brand-600 text-white font-bold text-xs flex items-center justify-center shrink-0">
+                        U
+                    </div>
+                    <div class="menu-label overflow-hidden">
+                        <p id="user-name-label" class="text-xs font-bold text-slate-800 truncate">Pengguna Tamu</p>
+                        <p id="user-status-label" class="text-[10px] text-slate-500 truncate">Klik untuk Pengaturan Akun</p>
+                    </div>
+                </div>
+                <i class="ph ph-sliders-horizontal text-slate-400 group-hover:text-slate-600 menu-label"></i>
+            </button>
+
+            <button onclick="toggleMinimizeSidebar()"
+               class="sidebar-btn-container w-full flex items-center px-3 py-2 text-slate-500 hover:bg-slate-100 hover:text-slate-800 rounded-lg transition-colors text-xs font-medium">
+                <i id="minimize-icon" class="ph ph-arrows-out-line-horizontal text-lg mr-3 sidebar-icon shrink-0"></i> 
+                <span class="menu-label whitespace-nowrap">Perkecil Menu</span>
+            </button>
+        </div>
+    </aside>
+
+    <!-- MAIN -->
+    <main class="flex-1 flex flex-col overflow-hidden min-w-0">
+
+        <header class="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-4 md:px-6 shrink-0">
+            <div class="flex items-center gap-3">
+                <button onclick="toggleSidebar()"
+                        class="md:hidden p-2 rounded-lg hover:bg-slate-100 text-slate-600"
+                        aria-label="Buka menu">
+                    <i class="ph ph-list text-xl"></i>
+                </button>
+                <div>
+                    <h2 class="font-bold text-slate-800">Ruang Kerja (Workspace)</h2>
+                    <p class="text-xs text-slate-500" id="current-date">—</p>
+                </div>
+            </div>
+            <div class="flex items-center gap-2">
+                <button onclick="showNotification('Tidak ada notifikasi baru.', 'info')"
+                        class="p-2 rounded-lg hover:bg-slate-100 text-slate-600">
+                    <i class="ph ph-bell text-xl"></i>
+                </button>
+                <!-- Tombol Profil di Header agar mudah ditemukan -->
+                <button onclick="openLoginModal()" title="Profil & Pengaturan Akun"
+                        class="p-1 rounded-full hover:bg-slate-100 text-slate-600 border border-slate-200 shadow-sm flex items-center justify-center transition-colors">
+                    <div class="w-8 h-8 rounded-full bg-brand-600 text-white font-bold text-xs flex items-center justify-center">
+                        U
+                    </div>
+                </button>
+            </div>
+        </header>
+
+        <div class="flex-1 overflow-y-auto p-4 md:p-6 space-y-6">
+
+            <!-- HERO WITH MIYU MASCOT -->
+            <div class="bg-gradient-to-br from-brand-600 via-brand-700 to-brand-900 rounded-2xl p-6 md:p-8 text-white shadow-lg shadow-brand-500/10 transition-all duration-300 relative overflow-hidden">
+                <!-- Background decorative glow -->
+                <div class="absolute -right-10 -bottom-10 w-64 h-64 bg-brand-400/20 rounded-full blur-3xl pointer-events-none"></div>
+                
+                <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-6 relative z-10">
+                    <div class="max-w-xl">
+                        <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/10 backdrop-blur-md text-xs font-semibold text-brand-100 mb-3 border border-white/10">
+                            <i class="ph-fill ph-sparkle text-amber-300"></i> AI Meeting Companion
+                        </div>
+                        <h2 class="text-2xl md:text-3xl font-extrabold mb-2 leading-tight">Halo! Saya Miyu, Asisten Rapat Anda</h2>
+                        <p class="text-white/80 text-sm leading-relaxed mb-6">Miyu siap mendengarkan rapat Anda, mencatat transkrip, membuat ringkasan AI, hingga merancang infografis otomatis.</p>
+                        
+                        <div class="flex flex-wrap gap-3">
+                            <button id="btn-record" onclick="startRecording()"
+                                    class="px-6 py-3 bg-white text-brand-700 rounded-xl font-bold shadow-lg hover:shadow-xl hover:-translate-y-0.5 transition-all duration-300 flex items-center gap-2 justify-center text-sm">
+                                <i class="ph-fill ph-microphone-stage text-xl"></i>
+                                <span id="btn-record-label">Mulai Rekam Rapat</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Miyu Visual Mascot Badge -->
+                    <div class="flex items-center justify-center shrink-0">
+                        <div class="miyu-floating relative w-28 h-28 md:w-36 md:h-36 rounded-3xl bg-white/10 backdrop-blur-md border border-white/20 p-3 shadow-2xl flex items-center justify-center">
+                            <div id="hero-miyu-container" class="w-full h-full drop-shadow-md">
+                                <!-- Default SVG Miyu Badge -->
+                                <svg viewBox="0 0 100 100" class="w-full h-full" xmlns="http://www.w3.org/2000/svg">
+                                    <circle cx="50" cy="50" r="48" fill="#0EA5E9"/>
+                                    <!-- Ears -->
+                                    <path d="M 20 25 L 35 10 L 40 30 Z" fill="#0284C7"/>
+                                    <path d="M 80 25 L 65 10 L 60 30 Z" fill="#0284C7"/>
+                                    <!-- Face base -->
+                                    <circle cx="50" cy="52" r="38" fill="#F8FAFC"/>
+                                    <!-- Eyes -->
+                                    <ellipse cx="35" cy="46" rx="4.5" ry="7" fill="#0F172A" class="miyu-eye"/>
+                                    <ellipse cx="65" cy="46" rx="4.5" ry="7" fill="#0F172A" class="miyu-eye"/>
+                                    <circle cx="36.5" cy="44" r="2" fill="white"/>
+                                    <circle cx="66.5" cy="44" r="2" fill="white"/>
+                                    <!-- Cheeks -->
+                                    <ellipse cx="26" cy="54" rx="5" ry="2.5" fill="#F43F5E" opacity="0.4"/>
+                                    <ellipse cx="74" cy="54" rx="5" ry="2.5" fill="#F43F5E" opacity="0.4"/>
+                                    <!-- Mouth -->
+                                    <path d="M 42 58 Q 50 68 58 58" stroke="#0F172A" stroke-width="3.5" fill="none" stroke-linecap="round"/>
+                                    <!-- Antenna/Spark -->
+                                    <line x1="50" y1="14" x2="50" y2="4" stroke="white" stroke-width="3" stroke-linecap="round"/>
+                                    <circle cx="50" cy="4" r="4" fill="#FDE047"/>
+                                </svg>
+                            </div>
+                            <div class="absolute -bottom-2 bg-emerald-500 text-white text-[10px] font-bold px-2.5 py-0.5 rounded-full border border-white shadow-sm flex items-center gap-1">
+                                <span class="w-1.5 h-1.5 bg-white rounded-full animate-ping"></span> Standby
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- TRANSCRIPT -->
+            <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+                <div class="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
+                    <h3 class="font-bold text-slate-800 flex items-center gap-2">
+                        <i class="ph-fill ph-file-text text-brand-500 text-lg"></i>
+                        Transkrip Langsung
+                    </h3>
+                    <div class="flex items-center gap-3">
+                        <button onclick="insertSampleTranscript()" title="Masukkan teks sampel rapat" class="text-xs text-brand-600 hover:underline font-medium bg-brand-50 px-2.5 py-1 rounded-md border border-brand-100">
+                            + Contoh Teks
+                        </button>
+                        <div id="transcript-status-container" class="flex items-center gap-2">
+                            <span id="transcript-status" class="text-xs font-semibold text-slate-500">Standby</span>
+                        </div>
+                    </div>
+                </div>
+                <textarea id="transcript-box" oninput="handleTranscriptInput(event)" class="w-full p-6 min-h-[140px] max-h-[250px] resize-y overflow-y-auto text-sm text-slate-700 leading-relaxed bg-white focus:outline-none focus:ring-inset focus:ring-2 focus:ring-brand-100 transition-all duration-300 border-none placeholder:text-slate-400 placeholder:italic" placeholder="Transkrip suara otomatis muncul di sini. Anda juga bebas mengetik atau menempelkan (paste) teks rapat secara manual jika mikrofon bermasalah..."></textarea>
+                <div class="px-6 py-3 bg-slate-50 border-t border-slate-100 flex flex-wrap gap-2">
+                    <button id="btn-summarize" onclick="generateSummary()"
+                            class="hidden px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white rounded-lg text-sm font-medium transition-all duration-300 hover:shadow-md hover:-translate-y-0.5 flex items-center gap-2">
+                        <i class="ph ph-sparkle"></i> Buat Ringkasan AI
+                    </button>
+                </div>
+            </div>
+
+            <!-- RESULTS ROW (SUMMARY & INFOGRAPHIC) -->
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <!-- SUMMARY -->
+                <div id="summary-section" class="hidden bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex-col">
+                    <div class="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
+                        <h3 class="font-bold text-slate-800 flex items-center gap-2">
+                            <i class="ph-fill ph-list-checks text-emerald-500 text-lg"></i>
+                            Ringkasan Rapat
+                        </h3>
+                        <div class="flex gap-2">
+                            <button onclick="copySummary()" title="Salin ke Clipboard" class="p-1.5 text-slate-500 hover:text-brand-600 hover:bg-brand-50 rounded-md transition-colors">
+                                <i class="ph ph-copy text-lg"></i>
+                            </button>
+                            <button onclick="downloadSummary()" title="Unduh File .txt" class="p-1.5 text-slate-500 hover:text-brand-600 hover:bg-brand-50 rounded-md transition-colors">
+                                <i class="ph ph-download-simple text-lg"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <div id="summary-result" class="p-6 text-sm text-slate-700 leading-relaxed space-y-4 flex-1"></div>
+                </div>
+
+                <!-- INFOGRAPHIC -->
+                <div id="infographic-section" class="hidden bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex-col">
+                    <div class="px-6 py-4 border-b border-slate-100 bg-slate-50/50">
+                        <h3 class="font-bold text-slate-800 flex items-center gap-2">
+                            <i class="ph-fill ph-chart-pie-slice text-purple-500 text-lg"></i>
+                            Infografis Data
+                        </h3>
+                    </div>
+                    <div id="infographic-result" class="p-6 flex-1 flex flex-col justify-center"></div>
+                </div>
+            </div>
+            
+        </div>
+    </main>
+</div>
+
+<!-- TOAST NOTIFICATION -->
+<div id="toast-container" class="fixed top-4 right-4 z-[70] flex flex-col gap-2 transition-all"></div>
+
+<!-- FLOATING RECORDING WIDGET (MIYU DESKTOP) -->
+<div id="floating-recording-widget" class="fixed bottom-6 left-6 z-[64] hidden flex-col items-start transition-all duration-500 transform translate-y-10 opacity-0 pointer-events-none sm:pointer-events-auto">
+    <div class="bg-white rounded-2xl shadow-[0_8px_30px_rgb(0,0,0,0.12)] border border-slate-200 p-3 flex items-center gap-3 w-64">
+        <div class="w-12 h-12 rounded-xl bg-brand-50 flex items-center justify-center shrink-0 border border-brand-100 overflow-hidden relative" id="floating-miyu-container">
+            <!-- SVG Miyu disuntikkan dari JS -->
+        </div>
+        <div class="flex-1 min-w-0">
+            <p class="text-xs font-bold text-slate-800 mb-0.5" id="floating-status-title">Miyu Mendengarkan...</p>
+            <p class="text-[10px] text-slate-500 truncate" id="floating-status-desc">Transkrip sedang berjalan</p>
+        </div>
+        <div class="shrink-0 flex gap-1">
+             <div class="sound-wave scale-75 transform origin-right" id="floating-sound-wave">
+                <span></span><span></span><span></span><span></span><span></span>
+            </div>
+        </div>
+    </div>
+    <!-- Gelembung Laporan Error -->
+    <div id="floating-error-bubble" class="hidden mt-2 bg-red-50 border border-red-100 text-red-600 text-[10px] px-3 py-2 rounded-lg shadow-sm max-w-[16rem] leading-relaxed">
+    </div>
+</div>
+
+<!-- ARCHIVE MODAL -->
+<div id="archive-modal" class="fixed inset-0 bg-slate-900/50 z-[60] hidden items-center justify-center backdrop-blur-sm transition-all duration-300">
+    <div class="bg-white rounded-xl shadow-xl w-full max-w-2xl max-h-[85vh] flex flex-col m-4 border border-slate-200 overflow-hidden">
+        <div class="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50 shrink-0">
+            <h2 class="text-lg font-bold text-slate-700 flex items-center gap-2">
+                <i class="ph-fill ph-folders text-brand-600"></i> Arsip Rapat
+            </h2>
+            <button onclick="closeArchiveModal()" class="p-2 hover:bg-slate-200 rounded-lg transition-colors">
+                <i class="ph ph-x text-lg"></i>
+            </button>
+        </div>
+        <div id="archive-list" class="flex-1 overflow-y-auto">
+            <div class="flex flex-col items-center justify-center p-12 text-slate-500">
+                <i class="ph ph-circle-notch animate-spin text-4xl mb-4 text-brand-500"></i>
+                <p class="font-medium text-slate-600">Memuat arsip…</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ANALYTICS MODAL -->
+<div id="analytics-modal" class="fixed inset-0 bg-slate-900/50 z-[60] hidden items-center justify-center backdrop-blur-sm transition-all duration-300">
+    <div class="bg-white rounded-xl shadow-xl w-full max-w-2xl max-h-[85vh] flex flex-col m-4 border border-slate-200 overflow-hidden">
+        <div class="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50 shrink-0">
+            <h2 class="text-lg font-bold text-slate-700 flex items-center gap-2">
+                <i class="ph-fill ph-chart-bar text-brand-600"></i> Analitik & Laporan
+            </h2>
+            <button onclick="closeAnalyticsModal()" class="p-2 hover:bg-slate-200 rounded-lg transition-colors">
+                <i class="ph ph-x text-lg"></i>
+            </button>
+        </div>
+        <div class="flex-1 overflow-y-auto p-6 space-y-6 bg-slate-50">
+            <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                <div class="bg-white p-4 rounded-xl border border-slate-200 text-center shadow-sm">
+                    <p class="text-xs text-slate-500 font-semibold mb-1">TOTAL RAPAT</p>
+                    <p class="text-2xl font-bold text-slate-800">12</p>
+                </div>
+                <div class="bg-white p-4 rounded-xl border border-slate-200 text-center shadow-sm">
+                    <p class="text-xs text-slate-500 font-semibold mb-1">DURASI (JAM)</p>
+                    <p class="text-2xl font-bold text-slate-800">14.5</p>
+                </div>
+                <div class="bg-white p-4 rounded-xl border border-slate-200 text-center shadow-sm">
+                    <p class="text-xs text-slate-500 font-semibold mb-1">TINDAK LANJUT</p>
+                    <p class="text-2xl font-bold text-emerald-600">38</p>
+                </div>
+                <div class="bg-white p-4 rounded-xl border border-slate-200 text-center shadow-sm">
+                    <p class="text-xs text-slate-500 font-semibold mb-1">EFISIENSI</p>
+                    <p class="text-2xl font-bold text-brand-600">85%</p>
+                </div>
+            </div>
+            <div class="bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex flex-col items-center justify-center h-48">
+                <i class="ph ph-chart-line-up text-4xl text-slate-300 mb-2"></i>
+                <p class="text-sm font-medium text-slate-500">Grafik tren rapat akan muncul di sini (Segera Hadir)</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- SETTINGS MODAL -->
+<div id="settings-modal" class="fixed inset-0 bg-slate-900/50 z-[60] hidden items-center justify-center backdrop-blur-sm transition-all duration-300">
+    <div class="bg-white rounded-xl shadow-xl w-full max-w-md max-h-[85vh] flex flex-col m-4 border border-slate-200 overflow-hidden">
+        <div class="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50 shrink-0">
+            <h2 class="text-lg font-bold text-slate-700 flex items-center gap-2">
+                <i class="ph-fill ph-gear text-brand-600"></i> Pengaturan
+            </h2>
+            <button onclick="closeSettingsModal()" class="p-2 hover:bg-slate-200 rounded-lg transition-colors">
+                <i class="ph ph-x text-lg"></i>
+            </button>
+        </div>
+        <div class="flex-1 overflow-y-auto p-6 space-y-6">
+            <div>
+                <h3 class="text-sm font-bold text-slate-800 mb-3">Preferensi Output AI</h3>
+                <div class="space-y-3">
+                    <label class="flex items-center justify-between p-3 border border-slate-200 rounded-xl cursor-pointer hover:bg-slate-50">
+                        <span class="text-sm font-medium text-slate-700">Gaya Bahasa Formal</span>
+                        <input type="checkbox" checked class="w-4 h-4 text-brand-600 rounded">
+                    </label>
+                    <label class="flex items-center justify-between p-3 border border-slate-200 rounded-xl cursor-pointer hover:bg-slate-50">
+                        <span class="text-sm font-medium text-slate-700">Sertakan Infografis AI (Nano Banana)</span>
+                        <input type="checkbox" checked class="w-4 h-4 text-brand-600 rounded">
+                    </label>
+                </div>
+            </div>
+            <div>
+                <h3 class="text-sm font-bold text-slate-800 mb-3">Integrasi (Segera Hadir)</h3>
+                <div class="space-y-2">
+                    <button class="w-full py-2.5 px-4 bg-slate-50 border border-slate-200 text-sm font-medium text-slate-600 rounded-xl flex justify-center items-center gap-2" disabled>
+                        <i class="ph-fill ph-google-logo text-lg"></i> Sambungkan Google Calendar
+                    </button>
+                    <button class="w-full py-2.5 px-4 bg-slate-50 border border-slate-200 text-sm font-medium text-slate-600 rounded-xl flex justify-center items-center gap-2" disabled>
+                        <i class="ph-fill ph-slack-logo text-lg"></i> Kirim otomatis ke Slack
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- LOGIN & PERSONAL SETTINGS MODAL -->
+<div id="login-modal" class="fixed inset-0 bg-slate-900/50 z-[60] hidden items-center justify-center backdrop-blur-sm transition-all duration-300">
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md max-h-[85vh] flex flex-col m-4 border border-slate-200 overflow-hidden">
+        <div class="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50 shrink-0">
+            <h2 class="text-base font-bold text-slate-800 flex items-center gap-2">
+                <i class="ph-fill ph-user-circle text-brand-600 text-xl"></i> Profil & Pengaturan Integrasi
+            </h2>
+            <button onclick="closeLoginModal()" class="p-1.5 hover:bg-slate-200 rounded-lg transition-colors text-slate-500">
+                <i class="ph ph-x text-lg"></i>
+            </button>
+        </div>
+        <div class="flex-1 overflow-y-auto p-6 space-y-5 text-sm">
+            <!-- Account Section -->
+            <div class="bg-brand-50/60 p-4 rounded-xl border border-brand-100 flex items-center justify-between">
+                <div class="flex items-center gap-3">
+                    <div id="modal-user-avatar" class="w-10 h-10 rounded-full bg-brand-600 text-white font-bold text-sm flex items-center justify-center shadow-sm">
+                        U
+                    </div>
+                    <div>
+                        <h4 id="modal-user-name" class="font-bold text-slate-800">Pengguna Sesi</h4>
+                        <p id="modal-user-email" class="text-xs text-slate-500">Terhubung secara anonim/lokal</p>
+                    </div>
+                </div>
+                <span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700">Aktif</span>
+            </div>
+
+            <!-- Gemini API Key Section -->
+            <div class="space-y-2">
+                <label class="block font-bold text-slate-800 text-xs flex items-center gap-1.5">
+                    <i class="ph-fill ph-key text-amber-500"></i> API Key Gemini AI Pribadi (Opsional)
+                </label>
+                <p class="text-xs text-slate-500">Masukkan API Key Anda jika ingin menggunakan kuota AI pribadi tanpa batasan.</p>
+                <div class="relative">
+                    <input type="password" id="custom-api-key" placeholder="AIzaSy..." class="w-full bg-slate-50 border border-slate-200 focus:bg-white focus:ring-2 focus:ring-brand-500 rounded-xl px-3 py-2 text-xs font-mono transition-all outline-none pr-8">
+                    <button type="button" onclick="toggleApiKeyVisibility()" class="absolute right-2.5 top-2.5 text-slate-400 hover:text-slate-600">
+                        <i id="eye-icon" class="ph ph-eye"></i>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Google Drive Integration -->
+            <div class="space-y-2 pt-2 border-t border-slate-100">
+                <label class="block font-bold text-slate-800 text-xs flex items-center gap-1.5">
+                    <i class="ph-fill ph-google-drive-logo text-emerald-600"></i> Penyimpanan Google Drive
+                </label>
+                <div class="flex items-center justify-between p-3 border border-slate-200 rounded-xl hover:bg-slate-50 transition-colors">
+                    <div>
+                        <p class="text-xs font-medium text-slate-700">Simpan Otomatis ke Drive</p>
+                        <p class="text-[10px] text-slate-400">Transkrip & ringkasan dikirim ke folder Drive Anda</p>
+                    </div>
+                    <label class="relative inline-flex items-center cursor-pointer">
+                        <input type="checkbox" id="gdrive-toggle" class="sr-only peer" onchange="toggleGDrive(this)">
+                        <div class="w-9 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-emerald-600"></div>
+                    </label>
+                </div>
+            </div>
+
+            <!-- Save Controls -->
+            <div class="pt-3">
+                <button onclick="savePersonalSettings()" class="w-full py-2.5 bg-brand-600 hover:bg-brand-700 text-white rounded-xl text-xs font-bold transition-all shadow-md">
+                    Simpan Pengaturan
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- CHATBOT WIDGET -->
+<div id="ai-chat-widget" class="fixed bottom-6 right-6 z-[65] flex flex-col items-end">
+    <!-- Chat Window -->
+    <div id="chat-window" class="hidden w-[90vw] sm:w-96 h-[28rem] bg-white rounded-2xl shadow-2xl border border-slate-200 flex-col mb-4 overflow-hidden transition-all duration-300 origin-bottom-right">
+        <div class="bg-gradient-to-r from-brand-600 to-brand-800 p-4 flex justify-between items-center text-white shrink-0">
+            <div class="flex items-center gap-3">
+                <div class="w-9 h-9 rounded-full bg-white flex items-center justify-center shrink-0 border-2 border-brand-200 overflow-hidden">
+                    <svg viewBox="0 0 100 100" class="w-full h-full drop-shadow-sm" xmlns="http://www.w3.org/2000/svg">
+                        <circle cx="50" cy="50" r="50" fill="#0EA5E9"/>
+                        <ellipse cx="35" cy="45" rx="5" ry="9" fill="white"/>
+                        <ellipse cx="65" cy="45" rx="5" ry="9" fill="white"/>
+                        <ellipse cx="25" cy="55" rx="6" ry="3" fill="#0284C7" opacity="0.6"/>
+                        <ellipse cx="75" cy="55" rx="6" ry="3" fill="#0284C7" opacity="0.6"/>
+                        <path d="M 40 60 Q 50 72 60 60" stroke="white" stroke-width="5" fill="transparent" stroke-linecap="round"/>
+                        <line x1="50" y1="18" x2="50" y2="6" stroke="white" stroke-width="4" stroke-linecap="round"/>
+                        <circle cx="50" cy="6" r="5" fill="#FDE047"/>
+                    </svg>
+                </div>
+                <div>
+                    <h3 class="font-bold leading-tight">Miyu AI</h3>
+                    <p class="text-[10px] text-brand-100 font-medium flex items-center gap-1">
+                        <span class="w-1.5 h-1.5 bg-emerald-400 rounded-full inline-block"></span> Online
+                    </p>
+                </div>
+            </div>
+            <button onclick="toggleChat()" class="text-white/80 hover:text-white hover:bg-white/10 p-1.5 rounded-lg transition-colors">
+                <i class="ph ph-x text-lg"></i>
+            </button>
+        </div>
+        <div id="chat-messages" class="flex-1 p-4 overflow-y-auto space-y-4 bg-slate-50 text-sm">
+            <!-- Default Greeting -->
+            <div class="flex gap-2">
+                <div class="w-8 h-8 rounded-full bg-brand-100 flex items-center justify-center shrink-0 mt-1 overflow-hidden border border-brand-200">
+                    <svg viewBox="0 0 100 100" class="w-full h-full drop-shadow-sm" xmlns="http://www.w3.org/2000/svg">
+                        <circle cx="50" cy="50" r="50" fill="#0EA5E9"/>
+                        <ellipse cx="35" cy="45" rx="5" ry="9" fill="white"/>
+                        <ellipse cx="65" cy="45" rx="5" ry="9" fill="white"/>
+                        <ellipse cx="25" cy="55" rx="6" ry="3" fill="#0284C7" opacity="0.6"/>
+                        <ellipse cx="75" cy="55" rx="6" ry="3" fill="#0284C7" opacity="0.6"/>
+                        <path d="M 40 60 Q 50 72 60 60" stroke="white" stroke-width="5" fill="transparent" stroke-linecap="round"/>
+                        <line x1="50" y1="18" x2="50" y2="6" stroke="white" stroke-width="4" stroke-linecap="round"/>
+                        <circle cx="50" cy="6" r="5" fill="#FDE047"/>
+                    </svg>
+                </div>
+                <div class="bg-white border border-slate-200 p-3 rounded-2xl rounded-tl-none shadow-sm text-slate-700 leading-relaxed">
+                    Halo! Saya Miyu, asisten AI Anda. Tanyakan apa saja tentang rapat yang sedang berlangsung atau yang sudah diringkas.
+                </div>
+            </div>
+        </div>
+        <div class="p-3 bg-white border-t border-slate-100 shrink-0">
+            <form id="chat-form" class="flex gap-2" onsubmit="handleChatSubmit(event)">
+                <input type="text" id="chat-input" class="flex-1 bg-slate-100 border-transparent focus:bg-white focus:border-brand-500 focus:ring-2 focus:ring-brand-200 rounded-xl px-4 py-2 text-sm transition-all outline-none" placeholder="Tanyakan sesuatu..." autocomplete="off">
+                <button type="submit" class="bg-brand-600 hover:bg-brand-700 text-white w-10 h-10 rounded-xl flex items-center justify-center shadow-md transition-colors shrink-0 disabled:opacity-50" id="chat-submit-btn">
+                    <i class="ph-fill ph-paper-plane-right"></i>
+                </button>
+            </form>
+        </div>
+    </div>
+    
+    <!-- Toggle Button -->
+    <button onclick="toggleChat()" class="w-14 h-14 bg-brand-600 hover:bg-brand-700 text-white rounded-full shadow-xl shadow-brand-500/30 flex items-center justify-center hover:-translate-y-1 transition-all duration-300 relative group">
+        <i class="ph-fill ph-chat-teardrop-text text-2xl group-hover:scale-110 transition-transform"></i>
+        <span class="absolute -top-1 -right-1 flex h-4 w-4">
+            <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-brand-400 opacity-75"></span>
+            <span class="relative inline-flex rounded-full h-4 w-4 bg-brand-500 border-2 border-white"></span>
+        </span>
+    </button>
+</div>
+
+<!-- ============================================================
+     CORE LOGIC & UI CONTROLLERS
+     ============================================================ -->
+<script>
+    // --- UI Controls ---
+    function toggleSidebar(force) {
+        const sidebar  = document.getElementById('sidebar');
+        const backdrop = document.getElementById('sidebar-backdrop');
+        if (!sidebar || !backdrop) return;
+
+        const isOpen   = !sidebar.classList.contains('-translate-x-full');
+        const shouldOpen = (force === undefined) ? !isOpen : !!force;
+
+        if (shouldOpen) {
+            sidebar.classList.remove('-translate-x-full');
+            backdrop.classList.remove('opacity-0', 'pointer-events-none');
+            backdrop.classList.add('opacity-100', 'pointer-events-auto');
+            document.body.style.overflow = 'hidden';
+        } else {
+            sidebar.classList.add('-translate-x-full');
+            backdrop.classList.add('opacity-0', 'pointer-events-none');
+            backdrop.classList.remove('opacity-100', 'pointer-events-auto');
+            document.body.style.overflow = '';
+        }
+    }
+
+    function toggleMinimizeSidebar() {
+        const sidebar = document.getElementById('sidebar');
+        const icon = document.getElementById('minimize-icon');
+        sidebar.classList.toggle('sidebar-minimized');
+        
+        if (sidebar.classList.contains('sidebar-minimized')) {
+            icon.classList.replace('ph-arrows-out-line-horizontal', 'ph-list');
+        } else {
+            icon.classList.replace('ph-list', 'ph-arrows-out-line-horizontal');
+        }
+    }
+
+    window.addEventListener('resize', () => {
+        if (window.innerWidth >= 768) {
+            const backdrop = document.getElementById('sidebar-backdrop');
+            if (backdrop) {
+                backdrop.classList.add('opacity-0', 'pointer-events-none');
+                backdrop.classList.remove('opacity-100', 'pointer-events-auto');
+            }
+            document.body.style.overflow = '';
+        }
+    });
+
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') toggleSidebar(false);
+    });
+
+    const toastContainer = document.getElementById('toast-container');
+
+    function showNotification(message, type = 'error') {
+        if (!toastContainer) return;
+        const toast = document.createElement('div');
+        const bgColor = type === 'error' ? 'bg-red-600' : (type === 'success' ? 'bg-emerald-600' : 'bg-slate-800');
+        const icon = type === 'error' ? 'ph-warning-circle' : (type === 'success' ? 'ph-check-circle' : 'ph-info');
+
+        toast.className = `${bgColor} text-white px-4 py-3 rounded-lg shadow-lg flex items-center gap-3 transition-all duration-300 max-w-sm opacity-0 translate-x-4`;
+        toast.innerHTML = `
+            <i class="ph-fill ${icon} text-xl shrink-0"></i>
+            <p class="text-sm font-medium leading-tight">${message}</p>
+        `;
+        toastContainer.appendChild(toast);
+        requestAnimationFrame(() => {
+            toast.classList.remove('opacity-0', 'translate-x-4');
+            toast.classList.add('opacity-100', 'translate-x-0');
+        });
+        setTimeout(() => {
+            toast.classList.add('opacity-0', 'translate-x-4');
+            setTimeout(() => toast.remove(), 300);
+        }, 3500);
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+        const d = new Date();
+        document.getElementById('current-date').textContent =
+            d.toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+    });
+
+    // --- State ---
+    let isRecording = false;
+    let isStarting = false;
+    let finalTranscript = '';
+    let recognition = null;
+    let lastStartAt = 0;
+    let quickRestarts = 0;
+    let simInterval = null;
+
+    const MIYU_SVG = `<svg viewBox="0 0 100 100" class="w-full h-full drop-shadow-sm" xmlns="http://www.w3.org/2000/svg"><circle cx="50" cy="50" r="48" fill="#0EA5E9"/><path d="M 20 25 L 35 10 L 40 30 Z" fill="#0284C7"/><path d="M 80 25 L 65 10 L 60 30 Z" fill="#0284C7"/><circle cx="50" cy="52" r="38" fill="#F8FAFC"/><ellipse cx="35" cy="46" rx="4.5" ry="7" fill="#0F172A" class="miyu-eye"/><ellipse cx="65" cy="46" rx="4.5" ry="7" fill="#0F172A" class="miyu-eye"/><circle cx="36.5" cy="44" r="2" fill="white"/><circle cx="66.5" cy="44" r="2" fill="white"/><ellipse cx="26" cy="54" rx="5" ry="2.5" fill="#F43F5E" opacity="0.4"/><ellipse cx="74" cy="54" rx="5" ry="2.5" fill="#F43F5E" opacity="0.4"/><path d="M 42 58 Q 50 68 58 58" stroke="#0F172A" stroke-width="3.5" fill="none" stroke-linecap="round"/><line x1="50" y1="14" x2="50" y2="4" stroke="white" stroke-width="3" stroke-linecap="round"/><circle cx="50" cy="4" r="4" fill="#FDE047"/></svg>`;
+
+    const MIYU_LISTENING_SVG = `<svg viewBox="0 0 100 100" class="w-full h-full drop-shadow-sm" xmlns="http://www.w3.org/2000/svg"><circle cx="50" cy="50" r="48" fill="#EF4444"/><path d="M 20 25 L 35 10 L 40 30 Z" fill="#991B1B"/><path d="M 80 25 L 65 10 L 60 30 Z" fill="#991B1B"/><circle cx="50" cy="52" r="38" fill="#F8FAFC"/><ellipse cx="35" cy="46" rx="5" ry="5" fill="#0F172A"/><ellipse cx="65" cy="46" rx="5" ry="5" fill="#0F172A"/><circle cx="36.5" cy="44" r="2" fill="white"/><circle cx="66.5" cy="44" r="2" fill="white"/><ellipse cx="26" cy="54" rx="5" ry="2.5" fill="#F43F5E" opacity="0.5"/><ellipse cx="74" cy="54" rx="5" ry="2.5" fill="#F43F5E" opacity="0.5"/><circle cx="50" cy="60" r="6" fill="#0F172A"/><path d="M 12 50 C 12 25 88 25 88 50" stroke="#0F172A" stroke-width="7" fill="none" stroke-linecap="round"/><rect x="8" y="42" width="12" height="20" rx="6" fill="#0284C7"/><rect x="80" y="42" width="12" height="20" rx="6" fill="#0284C7"/></svg>`;
+
+    const SR_ERROR_MESSAGES = {
+        'not-allowed': 'Akses mikrofon diblokir browser. Izinkan mic untuk halaman ini, lalu coba lagi.',
+        'service-not-allowed': 'Browser tidak mengizinkan pengenalan suara di halaman ini. Buka file lewat HTTPS atau localhost.',
+        'audio-capture': 'Mikrofon tidak terdeteksi atau sedang dipakai aplikasi lain.',
+        'network': 'Layanan pengenalan suara tidak terjangkau. Periksa koneksi internet Anda.',
+        'language-not-supported': 'Bahasa Indonesia (id-ID) tidak didukung browser ini.'
+    };
+
+    const MIC_ERROR_MESSAGES = {
+        NotAllowedError: 'Izin mikrofon ditolak atau diblokir. Pastikan memberi izin akses.',
+        SecurityError: 'Mikrofon diblokir oleh kebijakan keamanan halaman. Buka file lewat HTTPS atau localhost.',
+        NotFoundError: 'Mikrofon tidak ditemukan di perangkat ini.',
+        NotReadableError: 'Mikrofon sedang dipakai aplikasi lain atau tidak bisa dibuka.',
+        OverconstrainedError: 'Mikrofon tidak memenuhi pengaturan yang diminta.'
+    };
+
+    function escapeHtml(str) {
+        return String(str).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    }
+
+    function renderTranscript(interim = '') {
+        const box = document.getElementById('transcript-box');
+        box.value = finalTranscript + (interim ? ' ' + interim : '');
+        box.scrollTop = box.scrollHeight; // Auto-scroll to bottom
+    }
+
+    function handleTranscriptInput(e) {
+        finalTranscript = e.target.value;
+        if (finalTranscript.trim() && !isRecording) {
+            document.getElementById('btn-summarize').classList.remove('hidden');
+        }
+    }
+
+    function setRecordingStatus(status, isActive = false) {
+        const container = document.getElementById('transcript-status-container');
+        const heroMiyuContainer = document.getElementById('hero-miyu-container');
+        
+        // Elemen Floating Widget
+        const floatingWidget = document.getElementById('floating-recording-widget');
+        const floatingMiyuContainer = document.getElementById('floating-miyu-container');
+        const floatingStatusTitle = document.getElementById('floating-status-title');
+        const floatingSoundWave = document.getElementById('floating-sound-wave');
+        const floatingErrorBubble = document.getElementById('floating-error-bubble');
+        
+        if (isActive) {
+            container.innerHTML = `
+                <div class="sound-wave" title="Mendengarkan...">
+                    <span></span><span></span><span></span><span></span><span></span>
+                </div>
+                <span class="text-xs font-bold text-red-500">${status}</span>
+            `;
+            if (heroMiyuContainer) heroMiyuContainer.innerHTML = MIYU_LISTENING_SVG;
+            
+            // Munculkan widget desktop
+            if (floatingWidget) {
+                floatingWidget.classList.remove('hidden');
+                setTimeout(() => {
+                    floatingWidget.classList.remove('translate-y-10', 'opacity-0');
+                }, 50);
+                floatingMiyuContainer.innerHTML = MIYU_LISTENING_SVG;
+                floatingStatusTitle.textContent = status.includes('Simulasi') ? 'Mode Simulasi' : 'Miyu Mendengarkan...';
+                floatingStatusTitle.className = 'text-xs font-bold text-red-600 mb-0.5 animate-pulse';
+                floatingSoundWave.classList.remove('hidden');
+                floatingErrorBubble.classList.add('hidden');
+            }
+        } else {
+            const isError = status.includes('Gagal') || status.includes('⚠️');
+            const colorClass = isError ? 'text-red-500' : 'text-slate-500';
+            container.innerHTML = `<span class="text-xs font-semibold ${colorClass}">${status}</span>`;
+            if (heroMiyuContainer) heroMiyuContainer.innerHTML = MIYU_SVG;
+            
+            // Tangani widget desktop saat berhenti/error
+            if (floatingWidget && !floatingWidget.classList.contains('hidden')) {
+                if (isError) {
+                    floatingMiyuContainer.innerHTML = MIYU_SVG;
+                    floatingStatusTitle.textContent = 'Perekaman Terhenti';
+                    floatingStatusTitle.className = 'text-xs font-bold text-slate-700 mb-0.5';
+                    floatingSoundWave.classList.add('hidden');
+                    
+                    // Sembunyikan perlahan setelah error tampil beberapa detik
+                    setTimeout(() => {
+                        if (!isRecording) {
+                            floatingWidget.classList.add('translate-y-10', 'opacity-0');
+                            setTimeout(() => floatingWidget.classList.add('hidden'), 500);
+                        }
+                    }, 6000);
+                } else {
+                    // Sembunyikan langsung jika sukses (tanpa error)
+                    floatingWidget.classList.add('translate-y-10', 'opacity-0');
+                    setTimeout(() => {
+                        if (!isRecording) floatingWidget.classList.add('hidden');
+                    }, 500);
+                }
+            }
+        }
+    }
+
+    // --- Actions ---
+    function insertSampleTranscript() {
+        if (isRecording) stopRecording({ discard: true });
+        
+        finalTranscript = "Selamat pagi rekan-rekan sekalian. Hari ini kita membahas evaluasi proyek kuartal empat. Target kenaikan penjualan kita tercatat meningkat sebesar dua puluh persen dari periode sebelumnya. Untuk anggaran pemasaran digital, kita sepakati di angka lima ratus juta rupiah. Sarah bertugas menyiapkan brief materi kreatif selambat-lambatnya hari Jumat, sedangkan Budi akan mengurus finalisasi approval keuangan. Terima kasih.";
+
+        document.getElementById('transcript-box').value = finalTranscript;
+        setRecordingStatus('✅ Siap Dirangkum');
+        document.getElementById('btn-summarize').classList.remove('hidden');
+
+        showNotification('Contoh transkrip berhasil dimuat!', 'success');
+    }
+
+    function startSimulatedRecording() {
+        isStarting = false;
+        isRecording = true;
+        finalTranscript = '';
+        
+        const btn = document.getElementById('btn-record');
+        const label = document.getElementById('btn-record-label');
+        btn.classList.add('recording-pulse', 'bg-slate-50', 'text-red-600');
+        btn.classList.remove('bg-white', 'text-brand-700');
+        label.textContent = 'Berhenti Merekam';
+        btn.querySelector('i').className = 'ph-fill ph-stop-circle text-xl';
+        
+        document.getElementById('transcript-box').placeholder = 'Merekam (Mode Simulasi AKTIF)...';
+        setRecordingStatus('Merekam (Simulasi)', true);
+
+        const sentences = [
+            "Halo semuanya, mari kita mulai rapat evaluasi hari ini. ",
+            "Berdasarkan laporan terakhir, ada peningkatan trafik website sebesar 30%. ",
+            "Kita perlu menambah anggaran server sebesar 5 juta rupiah untuk mengantisipasi lonjakan. ",
+            "Tolong Andi siapkan dokumen pengajuannya sebelum hari Kamis. ",
+            "Sekian dan terima kasih."
+        ];
+        
+        let i = 0;
+        simInterval = setInterval(() => {
+            if (i < sentences.length) {
+                finalTranscript += sentences[i];
+                renderTranscript();
+                document.getElementById('btn-summarize').classList.remove('hidden');
+                i++;
+            } else {
+                stopRecording();
+            }
+        }, 2500);
+    }
+
+    function startRecording() {
+        if (isRecording) { stopRecording(); return; }
+        if (isStarting) return;
+
+        const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+        if (!SR) {
+            showNotification('Browser tidak mendukung rekam suara. Mengaktifkan Mode Simulasi.', 'info');
+            startSimulatedRecording();
+            return;
+        }
+
+        isStarting = true;
+        // Langsung mulai recognition tanpa getUserMedia yang sering bermasalah di iframe
+        beginRecognition(SR);
+    }
+
+    function failRecording(message) {
+        showNotification(message, 'error');
+        
+        // Tampilkan error di widget desktop Miyu
+        const floatingErrorBubble = document.getElementById('floating-error-bubble');
+        if (floatingErrorBubble) {
+            floatingErrorBubble.innerHTML = `<i class="ph-fill ph-warning-circle text-red-500 mr-1 text-xs"></i> <strong>Laporan Miyu:</strong> ${escapeHtml(message)}`;
+            floatingErrorBubble.classList.remove('hidden');
+        }
+        
+        stopRecording({ message });
+    }
+
+    function beginRecognition(SR) {
+        const btn = document.getElementById('btn-record');
+        const label = document.getElementById('btn-record-label');
+
+        let rec;
+        try {
+            rec = new SR();
+        } catch (err) {
+            console.error('Gagal membuat instance SpeechRecognition:', err);
+            showNotification('Gagal menyiapkan pengenalan suara di browser ini.', 'error');
+            return;
+        }
+
+        rec.lang = 'id-ID';
+        rec.continuous = true;
+        rec.interimResults = true;
+
+        // Penanganan kata yang terlewat dengan Buffer Transkripsi yang lebih agresif
+        rec.onresult = (event) => {
+            let interim = '';
+            for (let i = event.resultIndex; i < event.results.length; i++) {
+                const transcriptText = event.results[i][0].transcript;
+                if (event.results[i].isFinal) {
+                    // Tambahkan spasi otomatis jika belum ada untuk mencegah kata-kata menempel
+                    if (finalTranscript && !finalTranscript.endsWith(' ')) {
+                        finalTranscript += ' ';
+                    }
+                    finalTranscript += transcriptText.trim() + ' ';
+                } else {
+                    interim += transcriptText;
+                }
+            }
+            renderTranscript(interim);
+            
+            if (!isRecording && (finalTranscript.trim() || interim.trim())) {
+                document.getElementById('btn-summarize').classList.remove('hidden');
+            }
+        };
+
+        rec.onerror = (event) => {
+            if (recognition !== rec) return;
+            console.warn('Speech recognition error:', event.error);
+            
+            // Tangani jeda keheningan tanpa mematikan sesi rekam
+            if (event.error === 'no-speech') {
+                return; // Abaikan error no-speech agar sistem terus mendengarkan
+            }
+            if (event.error === 'aborted') return;
+            
+            // Jika akses mic diblokir, otomatis fallback ke simulasi
+            if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
+                showNotification('Izin mic diblokir oleh browser. Beralih ke Mode Simulasi Perekaman.', 'info');
+                stopRecording({ discard: true });
+                startSimulatedRecording();
+                return;
+            }
+
+            failRecording(SR_ERROR_MESSAGES[event.error] || `Transkripsi gagal (${event.error}).`);
+        };
+
+        rec.onend = () => {
+            if (!isRecording || recognition !== rec) return;
+            
+            // Restart instan tanpa jeda agar tidak ada kata yang terlewat di antara jeda bicara
+            try {
+                lastStartAt = Date.now();
+                rec.start();
+            } catch (err) {
+                // Jika re-start gagal, lakukan percobaaan ulang singkat
+                setTimeout(() => {
+                    if (isRecording && recognition === rec) {
+                        try { rec.start(); } catch(e){}
+                    }
+                }, 100);
+            }
+        };
+
+        recognition = rec;
+        isRecording = true;
+        finalTranscript = '';
+        quickRestarts = 0;
+
+        btn.classList.add('recording-pulse', 'bg-slate-50', 'text-red-600');
+        btn.classList.remove('bg-white', 'text-brand-700');
+        label.textContent = 'Berhenti Merekam';
+        btn.querySelector('i').className = 'ph-fill ph-stop-circle text-xl';
+        
+        document.getElementById('transcript-box').placeholder = 'Mendengarkan suara Anda...';
+        setRecordingStatus('Merekam', true);
+
+        try {
+            lastStartAt = Date.now();
+            rec.start();
+        } catch (err) {
+            console.error('Gagal memulai SpeechRecognition:', err);
+            failRecording('Gagal memulai pengenalan suara. Muat ulang halaman lalu coba lagi.');
+        }
+    }
+
+    function stopRecording(opts = {}) {
+        const { message = '', discard = false } = opts;
+        isRecording = false;
+        isStarting = false;
+        
+        if (simInterval) {
+            clearInterval(simInterval);
+            simInterval = null;
+        }
+
+        const btn = document.getElementById('btn-record');
+        const label = document.getElementById('btn-record-label');
+        
+        btn.classList.remove('recording-pulse', 'bg-slate-50', 'text-red-600');
+        btn.classList.add('bg-white', 'text-brand-700');
+        label.textContent = 'Mulai Rekam';
+        btn.querySelector('i').className = 'ph-fill ph-microphone-stage text-xl';
+
+        const rec = recognition;
+        recognition = null;
+        if (rec) {
+            rec.onend = null;
+            rec.onerror = null;
+            if (discard) rec.onresult = null;
+            try { rec.stop(); } catch (e) {}
+        }
+
+        if (discard) return;
+
+        if (finalTranscript.trim() || document.getElementById('transcript-box').value.trim()) {
+            setRecordingStatus(message ? '⚠️ Berhenti' : '✅ Selesai');
+            document.getElementById('btn-summarize').classList.remove('hidden');
+            if (!message) showNotification('Transkrip berhasil direkam!', 'success');
+        } else {
+            setRecordingStatus(message ? '⚠️ Gagal' : 'Standby');
+            document.getElementById('transcript-box').placeholder = (message ? message + ' ' : 'Belum ada transkrip. ') + 'Anda juga bisa mengeklik tombol "+ Contoh Teks" di atas, atau ketik transkrip manual Anda di sini...';
+        }
+    }
+
+    async function generateSummary() {
+        const btn = document.getElementById('btn-summarize');
+        btn.disabled = true;
+        btn.innerHTML = '<i class="ph ph-circle-notch animate-spin"></i> Memproses AI…';
+        
+        try {
+            const text = (finalTranscript || document.getElementById('transcript-box').value).trim();
+            
+            if (!text) {
+                showNotification('Tidak ada teks untuk diringkas.', 'error');
+                btn.disabled = false;
+                btn.innerHTML = '<i class="ph ph-sparkle"></i> Buat Ringkasan AI';
+                return;
+            }
+
+            // Memanggil Gemini API untuk Meringkas & Membuat Data Infografis
+            const payload = {
+                contents: [{ parts: [{ text: `Tolong analisis transkrip rapat ini. Berikan ringkasan yang jelas dan ekstrak metrik/angka penting untuk infografis.\n\nTranskrip:\n${text}` }] }],
+                generationConfig: {
+                    responseMimeType: "application/json",
+                    responseSchema: {
+                        type: "OBJECT",
+                        properties: {
+                            context: { type: "STRING", description: "Satu hingga dua kalimat ringkasan utama dari keseluruhan rapat." },
+                            points: { type: "ARRAY", items: { type: "STRING" }, description: "3 hingga 5 poin penting yang dibahas, ditulis ulang agar rapi." },
+                            actionItems: { type: "ARRAY", items: { type: "STRING" }, description: "Tugas atau tindak lanjut (Action Items) beserta PIC (jika ada)." },
+                            metrics: {
+                                type: "ARRAY",
+                                items: {
+                                    type: "OBJECT",
+                                    properties: {
+                                        label: { type: "STRING", description: "Judul metrik (misal: 'Kenaikan Penjualan', 'Anggaran', 'Total Peserta')" },
+                                        value: { type: "STRING", description: "Nilai metrik (misal: '20%', 'Rp 50 Jt', '10 Orang')" }
+                                    }
+                                },
+                                description: "Maksimal 4 data angka/metrik penting dari transkrip. Jika tidak ada angka sama sekali, buat 2 metrik status (contoh Label: 'Status Rapat', Value: 'Selesai')."
+                            }
+                        },
+                        required: ["context", "points", "actionItems", "metrics"]
+                    }
+                }
+            };
+
+            // Mengambil API Key dari pengaturan lokal pengguna, jika kosong biarkan platform (canvas) menanganinya
+            const apiKey = localStorage.getItem('meetingai_custom_api_key') || ""; 
+            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=${apiKey}`;
+
+            const response = await fetch(apiUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+
+            if (!response.ok) {
+                if (response.status === 400 || response.status === 403) {
+                     throw new Error('API Key tidak valid atau belum diatur. Silakan isi API Key di menu Profil.');
+                }
+                throw new Error('Gagal menghubungi AI');
+            }
+            
+            const result = await response.json();
+            const jsonText = result.candidates?.[0]?.content?.parts?.[0]?.text;
+            
+            if (!jsonText) throw new Error('Format respon AI tidak valid');
+            
+            const parsedData = JSON.parse(jsonText);
+
+            // --- BUILD HTML CONTENT ---
+            const pointsHtml = parsedData.points.map(p => `<li>${escapeHtml(p)}</li>`).join('');
+            const actionsHtml = parsedData.actionItems.length > 0 
+                ? parsedData.actionItems.map(a => `<li class="flex items-start gap-2"><i class="ph-fill ph-check-square text-brand-500 mt-0.5 shrink-0"></i> <span>${escapeHtml(a)}</span></li>`).join('')
+                : `<li class="text-slate-500 italic">Tidak ada tindak lanjut spesifik.</li>`;
+
+            const textResult = `
+                <div class="space-y-4">
+                    <div class="bg-brand-50 p-4 rounded-xl border border-brand-100 text-brand-900">
+                        <span class="font-bold block mb-1">🎯 Konteks Utama</span>
+                        <p>${escapeHtml(parsedData.context)}</p>
+                    </div>
+                    <div>
+                        <h4 class="font-bold text-slate-800 mb-2 border-b border-slate-100 pb-2">💡 Poin Pembahasan</h4>
+                        <ul class="list-disc list-inside space-y-2 text-slate-700">
+                            ${pointsHtml}
+                        </ul>
+                    </div>
+                    <div>
+                        <h4 class="font-bold text-slate-800 mb-2 border-b border-slate-100 pb-2">✅ Tindak Lanjut (Action Items)</h4>
+                        <ul class="space-y-2 text-slate-700">
+                            ${actionsHtml}
+                        </ul>
+                    </div>
+                </div>
+            `;
+
+            document.getElementById('summary-result').innerHTML = textResult;
+            document.getElementById('summary-section').classList.remove('hidden');
+            document.getElementById('summary-section').classList.add('flex');
+            
+            showNotification('Ringkasan AI berhasil dibuat!', 'success');
+            
+            // Render Infographic Gambar dari Gemini AI
+            generateInfographic(parsedData);
+
+            if (window.saveMeetingToDB) {
+                const tempDiv = document.createElement('div');
+                tempDiv.innerHTML = textResult;
+                const plainTextSummary = tempDiv.textContent || '';
+                const meetingTitle = document.getElementById('current-date').textContent;
+                window.saveMeetingToDB(`Rapat: ${meetingTitle}`, text, textResult, plainTextSummary)
+                    .then(() => showNotification('Otomatis tersimpan di Arsip.', 'info'))
+                    .catch(() => {});
+            }
+        } catch (e) {
+            console.error(e);
+            showNotification('Terjadi kesalahan saat memproses dengan AI. Coba lagi.', 'error');
+        } finally {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="ph ph-sparkle"></i> Buat Ringkasan AI';
+        }
+    }
+
+    async function generateInfographic(parsedData) {
+        const container = document.getElementById('infographic-result');
+        document.getElementById('infographic-section').classList.remove('hidden');
+        document.getElementById('infographic-section').classList.add('flex');
+        
+        // Tampilkan status pemuatan
+        container.innerHTML = `
+            <div class="flex flex-col items-center justify-center h-full text-brand-600 space-y-3 py-12">
+                <div class="relative">
+                    <i class="ph ph-circle-notch animate-spin text-4xl"></i>
+                    <i class="ph-fill ph-sparkle text-purple-500 absolute -top-1 -right-1 animate-pulse"></i>
+                </div>
+                <div class="text-center">
+                    <p class="text-sm font-bold text-slate-700">AI sedang menggambar...</p>
+                    <p class="text-xs text-slate-500 mt-1">Menggunakan Nano Banana (Gemini 3.1 Flash Image)</p>
+                </div>
+            </div>
+        `;
+
+        // Scroll agar terlihat
+        if (window.innerWidth < 1024) {
+            document.getElementById('summary-section').scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+
+        try {
+            // Prompt khusus gambar: bahasa Inggris disarankan untuk hasil visual terbaik, 
+            // tapi kita sertakan konteks agar tetap nyambung.
+            const imagePrompt = `A clean, modern, and highly professional corporate infographic summarizing a business meeting. Topic: ${parsedData.context}. Key visual elements to include as icons or abstract charts representing: ${parsedData.points.join(', ')}. Visual style: 2D vector, minimalist, UI/UX dashboard style, corporate blue, white, and emerald green color scheme. No complex text, focus on data visualization aesthetics.`;
+            
+            const payload = {
+                contents: [{
+                    parts: [{ text: imagePrompt }]
+                }],
+                generationConfig: {
+                    responseModalities: ['IMAGE'],
+                    imageConfig: { aspectRatio: "16:9" }
+                }
+            };
+            
+            // Mengambil API Key dari pengaturan lokal pengguna
+            const apiKey = localStorage.getItem('meetingai_custom_api_key') || ""; 
+            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-image:generateContent?key=${apiKey}`;
+            
+            const response = await fetch(apiUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+
+            if (!response.ok) throw new Error('Gagal membuat gambar dari API');
+            
+            const result = await response.json();
+            const part = result?.candidates?.[0]?.content?.parts?.find(p => p.inlineData);
+            
+            if (part) {
+                const imageUrl = `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
+                container.innerHTML = `
+                    <div class="space-y-4 flex flex-col h-full justify-center">
+                        <img src="${imageUrl}" alt="Infografis Rapat" class="w-full rounded-xl shadow-md border border-slate-200 transition-transform duration-300 hover:scale-[1.02]">
+                        
+                        <div class="flex items-center justify-between bg-slate-50 p-3 rounded-lg border border-slate-100">
+                            <p class="text-[11px] text-slate-500 font-medium">
+                                <i class="ph-fill ph-magic-wand text-purple-500"></i> Dihasilkan oleh Gemini AI Image
+                            </p>
+                            <a href="${imageUrl}" download="Infografis_Meeting.png" class="flex items-center gap-1 text-xs bg-white border border-slate-200 text-brand-700 px-3 py-1.5 rounded-md font-bold hover:bg-brand-50 hover:border-brand-300 shadow-sm transition-all">
+                                <i class="ph ph-download-simple"></i> Unduh
+                            </a>
+                        </div>
+                    </div>
+                `;
+            } else {
+                throw new Error('Tidak ada data gambar dalam respons AI');
+            }
+        } catch (error) {
+            console.error("Image generation error:", error);
+            container.innerHTML = `
+                <div class="text-center py-8">
+                    <i class="ph-fill ph-warning-circle text-red-400 text-3xl mb-2"></i>
+                    <p class="text-sm font-medium text-slate-700">Gagal menghasilkan gambar infografis.</p>
+                    <p class="text-xs text-slate-500 mt-1">Coba buat ulang ringkasan.</p>
+                </div>
+            `;
+        }
+    }
+
+    function openArchiveModal() {
+        toggleSidebar(false);
+        document.getElementById('archive-modal').classList.remove('hidden');
+        document.getElementById('archive-modal').classList.add('flex');
+    }
+    
+    function closeArchiveModal() {
+        document.getElementById('archive-modal').classList.add('hidden');
+        document.getElementById('archive-modal').classList.remove('flex');
+    }
+
+    function openAnalyticsModal() {
+        toggleSidebar(false);
+        document.getElementById('analytics-modal').classList.remove('hidden');
+        document.getElementById('analytics-modal').classList.add('flex');
+    }
+    
+    function closeAnalyticsModal() {
+        document.getElementById('analytics-modal').classList.add('hidden');
+        document.getElementById('analytics-modal').classList.remove('flex');
+    }
+
+    function openSettingsModal() {
+        toggleSidebar(false);
+        document.getElementById('settings-modal').classList.remove('hidden');
+        document.getElementById('settings-modal').classList.add('flex');
+    }
+    
+    function closeSettingsModal() {
+        document.getElementById('settings-modal').classList.add('hidden');
+        document.getElementById('settings-modal').classList.remove('flex');
+    }
+
+    // --- Personal Profile & Login Modal Controls ---
+    function openLoginModal() {
+        toggleSidebar(false);
+        document.getElementById('login-modal').classList.remove('hidden');
+        document.getElementById('login-modal').classList.add('flex');
+        
+        // Load existing saved API key if present
+        const savedKey = localStorage.getItem('meetingai_custom_api_key') || '';
+        document.getElementById('custom-api-key').value = savedKey;
+        
+        const gdriveSync = localStorage.getItem('meetingai_gdrive_sync') === 'true';
+        document.getElementById('gdrive-toggle').checked = gdriveSync;
+    }
+
+    function closeLoginModal() {
+        document.getElementById('login-modal').classList.add('hidden');
+        document.getElementById('login-modal').classList.remove('flex');
+    }
+
+    function toggleApiKeyVisibility() {
+        const input = document.getElementById('custom-api-key');
+        const icon = document.getElementById('eye-icon');
+        if (input.type === 'password') {
+            input.type = 'text';
+            icon.className = 'ph ph-eye-slash';
+        } else {
+            input.type = 'password';
+            icon.className = 'ph ph-eye';
+        }
+    }
+
+    function toggleGDrive(el) {
+        if (el.checked) {
+            showNotification('Fitur simpan otomatis ke Drive disiapkan.', 'info');
+        }
+    }
+
+    function savePersonalSettings() {
+        const apiKey = document.getElementById('custom-api-key').value.trim();
+        const gdriveSync = document.getElementById('gdrive-toggle').checked;
+        
+        let messages = [];
+
+        if (apiKey) {
+            if (localStorage.getItem('meetingai_custom_api_key') !== apiKey) {
+                messages.push('🔑 API Key Gemini berhasil ditautkan.');
+            }
+            localStorage.setItem('meetingai_custom_api_key', apiKey);
+        } else {
+            if (localStorage.getItem('meetingai_custom_api_key')) {
+                messages.push('🔑 API Key Gemini dilepas.');
+            }
+            localStorage.removeItem('meetingai_custom_api_key');
+        }
+        
+        if (gdriveSync && localStorage.getItem('meetingai_gdrive_sync') !== 'true') {
+            messages.push('📁 Google Drive diaktifkan.');
+        } else if (!gdriveSync && localStorage.getItem('meetingai_gdrive_sync') === 'true') {
+            messages.push('📁 Google Drive dinonaktifkan.');
+        }
+        
+        localStorage.setItem('meetingai_gdrive_sync', gdriveSync);
+        
+        if (messages.length > 0) {
+            // Gabungkan pesan menjadi HTML sederhana
+            showNotification(messages.join('<br>'), 'success');
+        } else {
+            showNotification('Tidak ada perubahan pengaturan profil.', 'info');
+        }
+        
+        closeLoginModal();
+    }
+
+    function generatePlainTextContent() {
+        const title = document.getElementById('current-date').textContent;
+        const tempDiv = document.createElement('div');
+        tempDiv.innerHTML = document.getElementById('summary-result').innerHTML;
+        
+        // Membersihkan format list HTML menjadi teks bersih
+        let text = tempDiv.innerText || tempDiv.textContent;
+        text = text.replace(/[\n\r]+/g, '\n').trim();
+
+        return `=========================================
+JUDUL    : Rapat ${title}
+TANGGAL  : ${new Date().toLocaleString('id-ID')}
+=========================================
+
+=== RINGKASAN AI ===
+${text}
+
+=== TRANSKRIP LENGKAP ===
+${finalTranscript || '(Tidak ada transkrip yang terekam)'}
+`;
+    }
+
+    function copySummary() {
+        const content = generatePlainTextContent();
+        
+        try {
+            // Mekanisme fallback karena navigator.clipboard kadang diblokir di iFrame
+            const textArea = document.createElement("textarea");
+            textArea.value = content;
+            textArea.style.position = "fixed";
+            textArea.style.left = "-999999px";
+            document.body.appendChild(textArea);
+            textArea.select();
+            document.execCommand('copy');
+            textArea.remove();
+            
+            showNotification('Teks berhasil disalin ke clipboard!', 'success');
+        } catch (err) {
+            showNotification('Gagal menyalin teks.', 'error');
+        }
+    }
+
+    function downloadSummary() {
+        const title = document.getElementById('current-date').textContent;
+        const content = generatePlainTextContent();
+
+        const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `MeetingAI_${title.replace(/\s+/g, '_')}.txt`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+
+        showNotification('File .txt berhasil diunduh.', 'success');
+    }
+
+    // --- AI Chatbot Logic ---
+    function toggleChat() {
+        const chatWindow = document.getElementById('chat-window');
+        chatWindow.classList.toggle('hidden');
+        chatWindow.classList.toggle('flex');
+        if (!chatWindow.classList.contains('hidden')) {
+            document.getElementById('chat-input').focus();
+        }
+    }
+
+    async function handleChatSubmit(e) {
+        e.preventDefault();
+        const inputEl = document.getElementById('chat-input');
+        const message = inputEl.value.trim();
+        if (!message) return;
+
+        addChatMessage(message, 'user');
+        inputEl.value = '';
+        
+        const submitBtn = document.getElementById('chat-submit-btn');
+        submitBtn.disabled = true;
+        inputEl.disabled = true;
+
+        const loadingId = addChatLoading();
+
+        try {
+            const transcriptText = finalTranscript || "Belum ada transkrip.";
+            const summaryEl = document.getElementById('summary-result');
+            const summaryText = (summaryEl && summaryEl.innerText.trim()) ? summaryEl.innerText : "Belum ada ringkasan.";
+            
+            const systemPrompt = `Anda adalah MeetingAI Assistant, asisten profesional untuk membantu pengguna mengingat dan menganalisis rapat.
+Gunakan transkrip dan ringkasan rapat berikut sebagai sumber informasi utama Anda untuk menjawab pertanyaan pengguna.
+Jawab dengan ramah, ringkas, dan jelas dalam bahasa Indonesia.
+
+--- TRANSKRIP RAPAT ---
+${transcriptText}
+
+--- RINGKASAN RAPAT ---
+${summaryText}
+`;
+
+            const payload = {
+                contents: [{ parts: [{ text: message }] }],
+                systemInstruction: { parts: [{ text: systemPrompt }] }
+            };
+
+            const apiKey = localStorage.getItem('meetingai_custom_api_key') || "";
+            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=${apiKey}`;
+
+            const response = await fetch(apiUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+
+            if (!response.ok) throw new Error('Network response error');
+            const result = await response.json();
+            const aiResponse = result.candidates?.[0]?.content?.parts?.[0]?.text || "Maaf, saya tidak dapat merespons saat ini.";
+
+            removeChatLoading(loadingId);
+            addChatMessage(aiResponse, 'ai');
+
+        } catch (error) {
+            console.error("Chat error:", error);
+            removeChatLoading(loadingId);
+            addChatMessage("Maaf, terjadi kesalahan saat menghubungi AI. Pastikan Anda memiliki koneksi internet.", 'ai', true);
+        } finally {
+            submitBtn.disabled = false;
+            inputEl.disabled = false;
+            inputEl.focus();
+        }
+    }
+
+    function addChatMessage(text, sender, isError = false) {
+        const container = document.getElementById('chat-messages');
+        const msgDiv = document.createElement('div');
+        
+        const formattedText = text.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>').replace(/\n/g, '<br>');
+
+        if (sender === 'user') {
+            msgDiv.className = 'flex justify-end gap-2';
+            msgDiv.innerHTML = `
+                <div class="bg-brand-600 text-white p-3 rounded-2xl rounded-tr-none shadow-sm max-w-[85%] text-[13px] leading-relaxed">
+                    ${formattedText}
+                </div>
+            `;
+        } else {
+            msgDiv.className = 'flex gap-2';
+            const textColor = isError ? 'text-red-500 font-medium' : 'text-slate-700';
+            msgDiv.innerHTML = `
+                <div class="w-8 h-8 rounded-full bg-brand-100 flex items-center justify-center shrink-0 mt-1 border border-brand-200 overflow-hidden">
+                    ${MIYU_SVG}
+                </div>
+                <div class="bg-white border border-slate-200 p-3 rounded-2xl rounded-tl-none shadow-sm max-w-[85%] text-[13px] leading-relaxed ${textColor}">
+                    ${formattedText}
+                </div>
+            `;
+        }
+        container.appendChild(msgDiv);
+        container.scrollTop = container.scrollHeight;
+    }
+
+    function addChatLoading() {
+        const container = document.getElementById('chat-messages');
+        const id = 'loading-' + Date.now();
+        const msgDiv = document.createElement('div');
+        msgDiv.id = id;
+        msgDiv.className = 'flex gap-2';
+        msgDiv.innerHTML = `
+            <div class="w-8 h-8 rounded-full bg-brand-100 flex items-center justify-center shrink-0 mt-1 border border-brand-200 overflow-hidden">
+                ${MIYU_SVG}
+            </div>
+            <div class="bg-white border border-slate-200 py-3 px-4 rounded-2xl rounded-tl-none shadow-sm flex items-center gap-1.5 text-brand-500">
+                <div class="w-1.5 h-1.5 bg-brand-400 rounded-full animate-bounce"></div>
+                <div class="w-1.5 h-1.5 bg-brand-400 rounded-full animate-bounce" style="animation-delay: 150ms"></div>
+                <div class="w-1.5 h-1.5 bg-brand-400 rounded-full animate-bounce" style="animation-delay: 300ms"></div>
+            </div>
+        `;
+        container.appendChild(msgDiv);
+        container.scrollTop = container.scrollHeight;
+        return id;
+    }
+
+    function removeChatLoading(id) {
+        const el = document.getElementById(id);
+        if (el) el.remove();
+    }
+
+    // Ekspor fungsi ke window agar dapat dipanggil dari HTML (onclick)
+    window.toggleSidebar = toggleSidebar;
+    window.toggleMinimizeSidebar = toggleMinimizeSidebar;
+    window.showNotification = showNotification;
+    window.openArchiveModal = openArchiveModal;
+    window.closeArchiveModal = closeArchiveModal;
+    window.openAnalyticsModal = openAnalyticsModal;
+    window.closeAnalyticsModal = closeAnalyticsModal;
+    window.openSettingsModal = openSettingsModal;
+    window.closeSettingsModal = closeSettingsModal;
+    window.openLoginModal = openLoginModal;
+    window.closeLoginModal = closeLoginModal;
+    window.toggleApiKeyVisibility = toggleApiKeyVisibility;
+    window.toggleGDrive = toggleGDrive;
+    window.savePersonalSettings = savePersonalSettings;
+    window.generateSummary = generateSummary;
+    window.generateInfographic = generateInfographic;
+    window.downloadSummary = downloadSummary;
+    window.copySummary = copySummary;
+    window.startRecording = startRecording;
+    window.insertSampleTranscript = insertSampleTranscript;
+    window.handleTranscriptInput = handleTranscriptInput;
+    window.toggleChat = toggleChat;
+    window.handleChatSubmit = handleChatSubmit;
+</script>
+
+<!-- ============================================================
+     FIREBASE INTEGRATION
+     ============================================================ -->
+<script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+    import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+    import { getFirestore, collection, onSnapshot, addDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+    const appId = typeof __app_id !== 'undefined' ? __app_id : 'meeting-ai-prototipe-1';
+    const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : null;
+
+    let app, db, auth, currentUser = null;
+
+    if (firebaseConfig && Object.keys(firebaseConfig).length > 0) {
+        app  = initializeApp(firebaseConfig);
+        db   = getFirestore(app);
+        auth = getAuth(app);
+
+        const initAuth = async () => {
+            try {
+                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                    await signInWithCustomToken(auth, __initial_auth_token);
+                } else {
+                    await signInAnonymously(auth);
+                }
+            } catch (e) { console.error("Auth Error:", e); }
+        };
+
+        onAuthStateChanged(auth, (user) => {
+            if (user) { currentUser = user; loadArchiveData(); }
+        });
+
+        initAuth();
+    }
+
+    function loadArchiveData() {
+        if (!currentUser || !db) return;
+        const meetingsRef = collection(db, 'artifacts', appId, 'users', currentUser.uid, 'meetings');
+
+        onSnapshot(meetingsRef, (snapshot) => {
+            const archiveList = document.getElementById('archive-list');
+            if (snapshot.empty) {
+                archiveList.innerHTML = `
+                    <div class="flex flex-col items-center justify-center p-8 text-slate-500 h-full">
+                        <div class="w-16 h-16 mb-4 rounded-full bg-slate-100 flex items-center justify-center">
+                            <i class="ph ph-folder-dashed text-3xl text-slate-400"></i>
+                        </div>
+                        <p class="font-medium text-slate-600">Belum ada arsip rapat.</p>
+                        <p class="text-xs mt-1 text-slate-400 text-center">Rapat yang Anda ringkas akan otomatis tersimpan di sini.</p>
+                    </div>
+                `;
+                return;
+            }
+
+            let html = '<div class="divide-y divide-slate-100">';
+            const docs = [];
+            snapshot.forEach(doc => docs.push({ id: doc.id, ...doc.data() }));
+            docs.sort((a, b) => b.timestamp - a.timestamp);
+
+            docs.forEach(data => {
+                const dateStr = new Date(data.timestamp).toLocaleString('id-ID', {
+                    weekday: 'short', day: 'numeric', month: 'short', year: 'numeric',
+                    hour: '2-digit', minute: '2-digit'
+                });
+                html += `
+                    <div class="p-5 bg-white hover:bg-brand-50/50 transition-colors">
+                        <div class="flex flex-col sm:flex-row sm:justify-between sm:items-start mb-3 gap-2">
+                            <h3 class="font-bold text-slate-800 text-base flex items-start gap-2">
+                                <i class="ph-fill ph-file-text text-brand-500 mt-1"></i>
+                                <span>${data.title || 'Rapat Tanpa Judul'}</span>
+                            </h3>
+                            <span class="text-[11px] font-medium text-slate-500 bg-slate-100 border border-slate-200 px-2 py-0.5 rounded-md whitespace-nowrap">${dateStr}</span>
+                        </div>
+                        <div class="bg-slate-50 rounded-lg p-3 border border-slate-100 text-[13px] text-slate-600 line-clamp-3 leading-relaxed">
+                            ${data.summaryText || 'Tidak ada isi ringkasan.'}
+                        </div>
+                    </div>
+                `;
+            });
+            html += '</div>';
+            archiveList.innerHTML = html;
+        }, (error) => {
+            console.error("Error fetching archive:", error);
+            document.getElementById('archive-list').innerHTML = `
+                <div class="p-6 text-red-500 text-center flex flex-col items-center">
+                    <i class="ph-fill ph-warning text-3xl mb-2"></i>
+                    <p>Gagal memuat data arsip. Periksa koneksi internet Anda.</p>
+                </div>`;
+        });
+    }
+
+    window.saveMeetingToDB = async (title, transcript, summaryHtml, summaryText) => {
+        if (!currentUser || !db) return;
+        try {
+            const meetingsRef = collection(db, 'artifacts', appId, 'users', currentUser.uid, 'meetings');
+            await addDoc(meetingsRef, { title, transcript, summaryHtml, summaryText, timestamp: Date.now() });
+        } catch (error) {
+            console.error("Gagal simpan ke DB:", error);
+            throw error;
+        }
+    };
+</script>
+
+</body>
+</html>
